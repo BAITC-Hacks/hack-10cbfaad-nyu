@@ -18,12 +18,34 @@ const mockProduct = {
   product_url: "https://ekt.kz/catalog/027228",
 };
 
+const quantityWords: Record<string, number> = {
+  один: 1,
+  одну: 1,
+  одна: 1,
+  два: 2,
+  две: 2,
+  три: 3,
+  четыре: 4,
+  пять: 5,
+};
+
+const cartQuantityPattern = "(?:\\d+|один|одну|одна|два|две|три|четыре|пять)";
+const cartIntentPattern = new RegExp(
+  `(?:^|[^\\p{L}])(?:добав(?:ь|ить|ьте)|хочу|возьми|положи|беру|можно|add)(?:[^\\p{L}\\p{N}]+мне)?[^\\p{L}\\p{N}]+(${cartQuantityPattern})(?=$|[^\\p{L}\\p{N}])`,
+  "iu",
+);
+
+function parseQuantity(value: string): number {
+  const parsed = /^\d+$/.test(value) ? Number(value) : quantityWords[value];
+  return Number.isSafeInteger(parsed) && parsed >= 1 ? parsed : 0;
+}
+
 export function mockChatResponse(request: ChatRequest): ChatResponse {
   const conversationId = request.conversation_id || randomUUID();
   const message = request.message.trim();
   const lowerMessage = message.toLocaleLowerCase("ru-RU");
-  const quantityMatch = lowerMessage.match(/(?:добав(?:ь|ить)|add)\s+(\d+)/i);
-  const quantity = quantityMatch ? Math.max(1, Number(quantityMatch[1])) : 0;
+  const quantityMatch = lowerMessage.match(cartIntentPattern);
+  const quantity = quantityMatch ? parseQuantity(quantityMatch[1]) : 0;
 
   if (lowerMessage.includes("недоступ") || lowerMessage.includes("ошибка каталога")) {
     return {

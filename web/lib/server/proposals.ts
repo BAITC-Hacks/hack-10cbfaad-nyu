@@ -20,11 +20,27 @@ interface IdempotencyRecord {
   result: CartResult;
 }
 
-const proposals = new Map<string, PendingProposal>();
-const idempotency = new Map<string, IdempotencyRecord>();
+interface ProposalStore {
+  proposals: Map<string, PendingProposal>;
+  idempotency: Map<string, IdempotencyRecord>;
+}
+
+declare global {
+  // Next.js can evaluate different route handlers in separate server bundles.
+  // Keep the mock MVP store on globalThis so those bundles share the same maps.
+  // eslint-disable-next-line no-var
+  var __ektCartProposalStore: ProposalStore | undefined;
+}
+
+const store =
+  globalThis.__ektCartProposalStore ??
+  (globalThis.__ektCartProposalStore = {
+    proposals: new Map<string, PendingProposal>(),
+    idempotency: new Map<string, IdempotencyRecord>(),
+  });
 
 export function saveProposal(action: ChatAction, conversationId: string, sessionId: string): void {
-  proposals.set(action.proposal_id, {
+  store.proposals.set(action.proposal_id, {
     proposal_id: action.proposal_id,
     conversation_id: conversationId,
     product_id: action.product_id,
@@ -36,7 +52,7 @@ export function saveProposal(action: ChatAction, conversationId: string, session
 }
 
 export function getProposal(proposalId: string, sessionId: string): PendingProposal | null {
-  const proposal = proposals.get(proposalId);
+  const proposal = store.proposals.get(proposalId);
   if (!proposal || proposal.session_id !== sessionId) return null;
 
   if (
@@ -50,17 +66,17 @@ export function getProposal(proposalId: string, sessionId: string): PendingPropo
 }
 
 export function markCompleted(proposalId: string): void {
-  const proposal = proposals.get(proposalId);
+  const proposal = store.proposals.get(proposalId);
   if (proposal) proposal.status = "COMPLETED";
 }
 
 export function getIdempotencyResult(sessionId: string, key: string): CartResult | null {
-  const record = idempotency.get(`${sessionId}:${key}`);
+  const record = store.idempotency.get(`${sessionId}:${key}`);
   return record?.result || null;
 }
 
 export function saveIdempotencyResult(sessionId: string, key: string, result: CartResult): void {
-  idempotency.set(`${sessionId}:${key}`, { session_id: sessionId, key, result });
+  store.idempotency.set(`${sessionId}:${key}`, { session_id: sessionId, key, result });
 }
 
 export function makeSessionId(): string {
