@@ -43,27 +43,23 @@ export async function POST(request: Request) {
     const serviceUrl = process.env.AI_SERVICE_URL;
     let attachment: AttachmentResponse;
 
-    if (serviceUrl) {
-      const upstreamForm = new FormData();
-      upstreamForm.append("file", file, file.name);
-      const upstreamResponse = await fetch(`${serviceUrl}/internal/v1/attachments`, {
-        method: "POST",
-        headers: internalHeaders(id),
-        body: upstreamForm,
-      });
-      if (!upstreamResponse.ok) {
-        return errorResponse("FILE_PARSE_FAILED", "AI Service не смог обработать файл", 422, id);
-      }
-      attachment = (await upstreamResponse.json()) as AttachmentResponse;
-    } else {
-      attachment = {
-        attachment_id: randomUUID(),
-        file_name: file.name,
-        mime_type: file.type,
-        size_bytes: file.size,
-        status: "ready",
-      };
+    if (!serviceUrl) {
+      return errorResponse("AI_SERVICE_UNAVAILABLE", "AI Service не настроен", 503, id);
     }
+    const upstreamForm = new FormData();
+    upstreamForm.append("file", file, file.name);
+    const upstreamResponse = await fetch(`${serviceUrl}/internal/v1/attachments`, {
+      method: "POST",
+      headers: internalHeaders(id),
+      body: upstreamForm,
+    });
+    if (!upstreamResponse.ok) {
+      if (upstreamResponse.status >= 500) {
+        return errorResponse("AI_SERVICE_UNAVAILABLE", "AI Service недоступен", 503, id);
+      }
+      return errorResponse("FILE_PARSE_FAILED", "AI Service не смог обработать файл", 422, id);
+    }
+    attachment = (await upstreamResponse.json()) as AttachmentResponse;
 
     const result = NextResponse.json(attachment, { status: 201, headers: { "X-Request-ID": id } });
     if (!cookies().get("ekt_session_id")) {
@@ -71,6 +67,6 @@ export async function POST(request: Request) {
     }
     return result;
   } catch {
-    return errorResponse("FILE_PARSE_FAILED", "Не удалось обработать файл", 422, id);
+    return errorResponse("AI_SERVICE_UNAVAILABLE", "AI Service недоступен", 503, id);
   }
 }

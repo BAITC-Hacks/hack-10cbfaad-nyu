@@ -1,6 +1,6 @@
 # EKT AI — консультант по электротоварам
 
-Хакатонный MVP чат-ассистента для каталога ekt.kz. Пользователь может искать электротовары, смотреть карточки и сведения о наличии, прикладывать спецификации и подтверждать предложение добавить товар в корзину. Проект разделён на веб-приложение, AI Service и Product Service. Для локального просмотра интерфейса предусмотрен режим с демонстрационными данными.
+Хакатонный MVP чат-ассистента для каталога ekt.kz. Пользователь может искать электротовары, смотреть карточки и сведения о наличии, прикладывать спецификации и подтверждать предложение добавить товар в корзину. Проект разделён на веб-приложение, AI Service и Product Service. AI Service обращается к подключённому API модели; ниже приведена настройка Gemini.
 
 ## Состав проекта
 
@@ -9,50 +9,37 @@
 | `web/` | Интерфейс чата, загрузка файлов, карточки товаров, подтверждение корзины и серверные API-маршруты Next.js. |
 | `ai-service/` | Обработка сообщений и вложений, вызов LLM и инструментов поиска товаров. |
 | `services/product-service/` | Получение и нормализация каталога ekt.kz, поиск, аналоги, проверка деталей и остатков. |
-| `services/product-service/fixtures/` | Один пример товара для локального заполнения каталога без доступа к ekt.kz. |
+| `services/product-service/fixtures/` | Пример товара для проверки каталога без доступа к API ekt.kz. |
 
 Поток запросов: браузер → `web` → AI Service → Product Service → PostgreSQL / API ekt.kz. Предложение добавить товар в корзину возвращается в `web` и выполняется только после подтверждения пользователя.
 
-## Технологический стек
+## Запуск с подключённым Gemini API
 
-| Компонент | Технологии |
-| --- | --- |
-| Веб-интерфейс и BFF | Node.js 20, Next.js 14.2.15, React 18.3.1, TypeScript 5.7.2, Tailwind CSS 3.4.17 |
-| AI Service | Python 3.12, FastAPI, Uvicorn, Pydantic, httpx; OpenAI-совместимый HTTP API для OpenAI/DeepSeek или локальный mock-провайдер |
-| Каталог | Python 3.12, FastAPI, SQLAlchemy 2, Pydantic, PostgreSQL 16, psycopg 3, httpx |
-| История чата | Redis при заданном `REDIS_URL`; без него — память процесса AI Service |
-| Вложения | `openpyxl` для XLSX, `python-docx` для DOCX, `pypdf` для PDF; JPEG принимается без распознавания текста |
-| Запуск и проверки | Docker Compose для Product Service и PostgreSQL; npm, pip, pytest |
-
-Внутренние сервисы обмениваются JSON через HTTP, файлы передаются как `multipart/form-data`. Потоковая выдача ответа не реализована.
-
-## Быстрый запуск интерфейса
-
-Нужны Node.js 20 и npm. Команды ниже рассчитаны на PowerShell и выполняются из корня этого репозитория:
-
-```powershell
-cd .\web
-npm ci
-npm run dev
-```
-
-Откройте `http://localhost:3000`. Без `web/.env.local` приложение использует встроенный mock AI и mock-корзину. Например, сообщение `добавь 2` создаёт предложение, которое можно подтвердить в интерфейсе; результат ведёт на `/mock-cart`. Для этого режима Python, PostgreSQL и ключ LLM не нужны.
-
-## Запуск всех трёх модулей локально
-
-Нужны Docker Desktop с `docker compose`, Python 3.12, Node.js 20 и npm. Порты `3000`, `8001` и `8002` должны быть свободны. Используйте три окна PowerShell; в каждом начните из корня репозитория.
+Нужны Docker Desktop с `docker compose`, Python 3.12, Node.js 20, npm, ключ Gemini API и учётные данные API ekt.kz для загрузки реального каталога. Команды рассчитаны на PowerShell и выполняются из корня репозитория. Порты `3000`, `6379`, `8001` и `8002` должны быть свободны. [Ключ Gemini можно создать в Google AI Studio](https://ai.google.dev/gemini-api/docs/api-key).
 
 ### 1. Product Service и PostgreSQL
 
+Скопируйте файл настроек, заполните `EKT_API_USERNAME` и `EKT_API_PASSWORD` в `services/product-service/.env`, затем запустите сервис:
+
 ```powershell
 cd .\services\product-service
-Copy-Item .env.example .env
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+```
+
+После сохранения `.env`:
+
+```powershell
 docker compose -f compose.yml up -d --build product-service
-docker compose -f compose.yml exec product-service python -m app.load_fixture
 Invoke-RestMethod http://localhost:8001/health
 ```
 
-Compose запускает PostgreSQL и Product Service. Команда `app.load_fixture` добавляет тестовый товар `515291` в каталог; логин к ekt.kz для этого не требуется. Ожидаемый ответ `/health` — `status: healthy`. База сохраняется в Docker volume после остановки контейнеров.
+Затем загрузите каталог:
+
+```powershell
+docker compose -f compose.yml exec product-service python -m app.sync_catalog
+```
+
+Compose запускает PostgreSQL и Product Service. Ожидаемый ответ `/health` — `status: healthy`. Каталог сам при старте не загружается. Для короткой проверки синхронизации можно добавить `--max-pages 1`.
 
 Для проверки поиска напрямую:
 
@@ -62,70 +49,102 @@ $body = @{ query = '027228'; limit = 5; filters = @{} } | ConvertTo-Json -Depth 
 Invoke-RestMethod -Method Post -Uri http://localhost:8001/internal/v1/products/search -Headers $headers -ContentType 'application/json' -Body $body
 ```
 
-### 2. AI Service
+### 2. Redis
+
+Для хранения истории диалогов запустите Redis в отдельном контейнере:
+
+```powershell
+docker run --rm -d --name ekt-ai-redis -p 6379:6379 redis:7-alpine
+```
+
+Если Redis уже работает на `localhost:6379`, этот шаг пропустите.
+
+### 3. AI Service и файл `.env`
+
+В новом окне PowerShell:
 
 ```powershell
 cd .\ai-service
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-$env:PRODUCT_SERVICE_URL = 'http://127.0.0.1:8001'
-$env:INTERNAL_SERVICE_TOKEN = 'change-me'
-$env:LLM_PROVIDER = 'mock'
-$env:REDIS_URL = ''
+```
+
+**Перед запуском Uvicorn** откройте `ai-service/.env` и вставьте настоящий ключ в `LLM_API_KEY`. Содержимое файла для локального запуска:
+
+```dotenv
+APP_ENV=development
+AI_SERVICE_PORT=8002
+INTERNAL_SERVICE_TOKEN=change-me
+PRODUCT_SERVICE_URL=http://127.0.0.1:8001
+REDIS_URL=redis://127.0.0.1:6379/0
+LLM_PROVIDER=gemini
+LLM_API_KEY=
+LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+LLM_MODEL=gemini-3.5-flash-lite
+LLM_TIMEOUT_SECONDS=60
+MAX_ATTACHMENT_MB=15
+CONVERSATION_TTL_SECONDS=86400
+KNOWLEDGE_DIR=knowledge
+```
+
+Пустое `LLM_API_KEY` нужно заменить своим ключом: без него AI Service не запустится. Не добавляйте `ai-service/.env` в Git. Затем запустите сервис:
+
+```powershell
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8002
 ```
 
-AI Service доступен на `http://localhost:8002/docs`. Его `.env.example` служит образцом: текущая реализация читает переменные окружения процесса, но не загружает `.env` автоматически. Встроенный LLM mock позволяет запустить сервис без API-ключа, однако поддерживает только базовые ответы и поиск; полноценное поведение модели и предложение корзины зависят от настроенного внешнего LLM.
+AI Service загружает `.env` при старте и доступен на `http://localhost:8002/docs`. Базовый URL и идентификатор модели соответствуют [OpenAI-совместимому API Gemini](https://ai.google.dev/gemini-api/docs/openai) и [странице Gemini 3.5 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite). Для других провайдеров можно указать `LLM_PROVIDER=openai` или `deepseek` и их URL, модель и ключ.
 
-### 3. Веб-приложение
+Адреса `product-service` и `redis` из вашего примера подходят при запуске всех сервисов в **одной Docker-сети**. В описанном здесь локальном запуске AI Service работает на компьютере, поэтому в `.env` нужны адреса `127.0.0.1`.
+
+### 4. Веб-приложение
 
 ```powershell
 cd .\web
-@(
-  'AI_SERVICE_URL=http://127.0.0.1:8002'
-  'PRODUCT_SERVICE_URL=http://127.0.0.1:8001'
-  'INTERNAL_SERVICE_TOKEN=change-me'
-  'CART_ADAPTER_MODE=mock'
-) | Set-Content -Encoding utf8 .env.local
+if (-not (Test-Path .env.local)) { Copy-Item .env.example .env.local }
 npm ci
 npm run dev
 ```
 
-Откройте `http://localhost:3000`. Адреса `127.0.0.1` используются потому, что AI Service и Next.js запущены на компьютере, а Product Service опубликован контейнером на порт `8001`. Адреса вида `http://product-service:8001` и `http://ai-service:8002` из файлов `.env.example` рассчитаны на общую Docker-сеть и при таком способе запуска не подойдут. После изменения `.env.local` перезапустите `npm run dev`.
+Проверьте в `web/.env.local`: `AI_SERVICE_URL=http://127.0.0.1:8002`, `PRODUCT_SERVICE_URL=http://127.0.0.1:8001`, тот же `INTERNAL_SERVICE_TOKEN`, что у Product Service, и `CART_ADAPTER_MODE=live`. Затем откройте `http://localhost:3000`. Веб-приложение отправляет сообщения в AI Service, который вызывает Gemini API и Product Service. При подтверждении предложения корзины `web` запрашивает актуальное наличие в Product Service. После изменения `.env.local` перезапустите `npm run dev`.
 
-Остановка: `Ctrl+C` в окнах AI Service и Next.js, затем в каталоге `services/product-service` выполните `docker compose -f compose.yml down`. Эта команда оставляет данные PostgreSQL в volume.
+Остановка: `Ctrl+C` в окнах AI Service и Next.js, затем в каталоге `services/product-service` выполните `docker compose -f compose.yml down` и остановите Redis командой `docker stop ekt-ai-redis`. Данные PostgreSQL останутся в Docker volume.
 
-## Реальный каталог, LLM и Redis
+## Проверка подключения
 
-- Для загрузки каталога ekt.kz задайте `EKT_API_USERNAME` и `EKT_API_PASSWORD` в `services/product-service/.env`, перезапустите Compose и выполните из этого каталога `docker compose -f compose.yml exec product-service python -m app.sync_catalog`. Каталог не синхронизируется при старте. Для короткой пробной загрузки доступно `--max-pages 1`; для импорта без запросов деталей — `--no-enrich`.
-- Для внешней модели задайте в окне AI Service `LLM_PROVIDER` (`openai` или `deepseek`), `LLM_API_KEY`, `LLM_BASE_URL` (базовый URL OpenAI-совместимого API без `/chat/completions`) и `LLM_MODEL`, затем перезапустите сервис. Секреты храните вне Git.
-- Для Redis запустите доступный Redis-сервер и задайте `REDIS_URL`, например `redis://127.0.0.1:6379/0`, **до** запуска AI Service. Без Redis история чата хранится только до перезапуска процесса.
+После запуска отправьте сообщение напрямую в AI Service:
 
-`INTERNAL_SERVICE_TOKEN` должен совпадать у Product Service, AI Service и `web`. Если меняете значение `change-me`, обновите `services/product-service/.env`, переменную в окне AI Service и `web/.env.local`.
+```powershell
+$body = @{ message = 'Привет'; attachment_ids = @(); locale = 'ru-RU' } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri http://localhost:8002/internal/v1/chat/messages -ContentType 'application/json' -Body $body
+```
+
+Ответ с `text`, `conversation_id` и пустым массивом `errors` подтверждает успешный вызов модели. Запрос к Gemini требует действующего ключа и сетевого доступа. `INTERNAL_SERVICE_TOKEN` должен совпадать у Product Service, AI Service и `web`; при замене `change-me` обновите три файла настроек. Если меняете `.env`, перезапустите соответствующий сервис.
 
 ## Основные настройки
 
 | Переменная | Где используется | Назначение |
 | --- | --- | --- |
-| `AI_SERVICE_URL` | `web` | Адрес AI Service; пустое значение включает встроенный mock веб-приложения. |
+| `AI_SERVICE_URL` | `web` | Адрес AI Service для запросов чата и передачи вложений. |
 | `PRODUCT_SERVICE_URL` | `ai-service`, `web` | Адрес Product Service. |
 | `INTERNAL_SERVICE_TOKEN` | все модули | Токен внутренних запросов к Product Service. |
 | `PRODUCT_DATABASE_URL` | Product Service | Подключение к PostgreSQL; в Compose уже задано. |
 | `EKT_API_USERNAME`, `EKT_API_PASSWORD` | Product Service | Basic Auth для запросов к API ekt.kz. |
-| `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` | AI Service | Выбор и параметры внешней LLM; по умолчанию используется `mock`. |
-| `REDIS_URL` | AI Service | Хранилище истории чатов; пустое значение включает память процесса. |
-| `CART_ADAPTER_MODE` | `web` | При `mock` проверка наличия демонстрационная. |
+| `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` | AI Service | Провайдер, ключ, адрес и модель подключённого AI API. |
+| `REDIS_URL` | AI Service | Подключение к Redis для истории диалогов. |
+| `CART_ADAPTER_MODE` | `web` | Значение `live` включает проверку наличия через Product Service. |
 | `CART_PROPOSAL_TTL_SECONDS` | `web` | Срок действия предложения корзины; по умолчанию 900 секунд. |
-| `EKT_CART_URL` | `web` | Ссылка, которую возвращает mock-корзина; по умолчанию `/mock-cart`. |
+| `EKT_CART_URL` | `web` | Ссылка на страницу корзины, возвращаемая текущим адаптером. |
 
 Примеры всех переменных находятся в `web/.env.example`, `ai-service/.env.example` и `services/product-service/.env.example`.
 
 ## Текущие ограничения MVP
 
-- Интеграция с реальным Cart API ekt.kz ещё не реализована: `web` всегда использует `MockEktCartAdapter`. Предложения и ключи идемпотентности хранятся в памяти процесса Next.js; при перезапуске они теряются.
-- В режиме `CART_ADAPTER_MODE=mock` наличие при подтверждении корзины тоже демонстрационное. Другие значения включают запрос наличия в Product Service, но не превращают адаптер корзины в реальный.
-- AI mock и веб mock отличаются: веб mock показывает готовую карточку и сценарий корзины, AI mock проверяет базовую интеграцию с Product Service. Для полноценного диалога и вызова инструмента `propose_cart_add` нужен настроенный внешний LLM.
-- В автономном режиме `web` загрузка файла только имитируется. AI Service извлекает текст из PDF и DOCX, а также данные XLSX; JPEG принимается без OCR или анализа изображения. Информация об условиях покупки пока не настроена. Цена и остаток из поиска по локальной БД являются кешированными; live-запрос деталей и наличия требует доступного API ekt.kz.
+- Подключение Gemini обеспечивает ответы модели и вызовы инструментов поиска, но реальный Cart API ekt.kz ещё не подключён. Подтверждение предложения не добавляет товар во внешнюю корзину; `EKT_CART_URL` меняет только ссылку в ответе.
+- Предложения корзины и ключи идемпотентности хранятся в памяти процесса Next.js и теряются при перезапуске.
+- AI Service извлекает текст из PDF и DOCX, а также данные XLSX. JPEG принимается без OCR или анализа изображения. Источник достоверных условий покупки пока не настроен.
+- Цена и остаток из поиска по локальной базе являются кешированными. Запрос актуальных деталей и наличия требует доступного API ekt.kz и его учётных данных.
 
 ## Проверки
 
@@ -149,3 +168,35 @@ docker compose -f compose.yml --profile test run --rm tests
 .\.venv\Scripts\python.exe -m pip install pytest
 .\.venv\Scripts\python.exe -m pytest -q
 ```
+
+## Технологический стек: что и для чего используется
+
+Версии веб-пакетов зафиксированы в `web/package.json`. Версии Python-зависимостей указаны диапазонами в `requirements.txt`; Dockerfile обоих Python-сервисов использует Python 3.12.
+
+| Технология | Где | Для чего |
+| --- | --- | --- |
+| Node.js 20 и npm | `web` | Запуск Next.js, установка пакетов и сборка интерфейса. |
+| Next.js 14.2.15 (App Router) | `web/app` | Страницы чата и корзины, а также серверные API-маршруты для чата, файлов и подтверждения предложений. |
+| React 18.3.1 | `web/components` | Компоненты чата, карточек товаров, загрузки файлов и подтверждения действий. |
+| TypeScript 5.7.2 | `web` | Типы запросов, ответов и данных между интерфейсом и API. |
+| Tailwind CSS 3.4.17 | `web` | Стили и адаптивная верстка интерфейса. |
+| PostCSS 8.4.49 и Autoprefixer 10.4.20 | `web` | Обработка CSS и добавление браузерных префиксов при сборке. |
+| ESLint 8.57.1 и `eslint-config-next` 14.2.15 | `web` | Проверка кода командой `npm run lint`. |
+| Python 3.12 | `ai-service`, `services/product-service` | Среда выполнения двух серверных сервисов. |
+| FastAPI и Uvicorn | оба Python-сервиса | HTTP API для чата, вложений, каталога, остатков и синхронизации; Uvicorn запускает приложения. |
+| Pydantic | оба Python-сервиса | Проверка входных данных и формирование структурированных ответов API. |
+| `pydantic-settings` | Product Service | Чтение и проверка настроек сервиса из окружения и `.env`. |
+| `python-dotenv` | AI Service | Загрузка `ai-service/.env` с адресом модели и API-ключом при старте сервиса. |
+| `httpx` | оба Python-сервиса | Запросы к API ekt.kz, Product Service и OpenAI-совместимому API модели. |
+| PostgreSQL 16 | Product Service | Постоянное хранение нормализованного каталога и поиск товаров, включая полнотекстовый поиск. |
+| SQLAlchemy 2 и `psycopg` 3 | Product Service | Модель данных, SQL-запросы и подключение Python-сервиса к PostgreSQL. |
+| Redis и Python-пакет `redis` | AI Service | Хранение истории диалога с ограниченным сроком жизни. |
+| OpenAI-совместимый Chat Completions API | AI Service | Вызов Gemini, OpenAI или DeepSeek через `httpx`; отдельный SDK не используется. |
+| `python-multipart` | AI Service | Прием файлов через `multipart/form-data`. |
+| `openpyxl`, `python-docx`, `pypdf` | AI Service | Извлечение данных соответственно из XLSX, DOCX и PDF. JPEG принимается, но OCR пока нет. |
+| HTTP/REST, JSON и `multipart/form-data` | Все модули | Обмен запросами и ответами между сервисами; отдельный формат для передачи файлов. |
+| Basic Auth, Bearer token и cookie | API ekt.kz, внутренние запросы, `web` | Авторизация к каталогу ekt.kz, проверка внутренних запросов Product Service и привязка предложений корзины к сессии браузера. |
+| Docker и Docker Compose | Dockerfile всех модулей; `services/product-service/compose.yml` | Контейнерные сборки; Compose сейчас запускает Product Service и PostgreSQL, а также тестовый профиль. |
+| pytest | Тесты Python-сервисов | Проверка контрактов AI Service, API каталога, нормализации и клиента ekt.kz. |
+
+В браузере ответы приходят целиком, без SSE. Интеграция с Cart API ekt.kz остаётся отдельной задачей.

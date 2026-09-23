@@ -3,13 +3,15 @@ import io
 import json
 from uuid import UUID
 
+import httpx
 from fastapi.testclient import TestClient
 
+from app.config import Settings
 from app.main import app
 from app.history import ConversationStore
 from app.service import AiService
 from app.models import ChatRequest
-from app.provider import LlmResult, MockLlmProvider
+from app.provider import LlmResult, MockLlmProvider, build_provider
 
 
 def test_chat_requires_message_or_attachment():
@@ -50,6 +52,36 @@ def test_mock_provider_removes_search_command_from_query():
 
     arguments = json.loads(result.tool_calls[0]["function"]["arguments"])
     assert arguments["query"] == "Legrand DRX250"
+
+
+def test_gemini_provider_uses_configured_api(monkeypatch):
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "Готово"}}]})
+
+    original_client = httpx.AsyncClient
+
+    def client_with_transport(*args, **kwargs):
+        return original_client(*args, transport=httpx.MockTransport(respond), **kwargs)
+
+    monkeypatch.setattr("app.provider.httpx.AsyncClient", client_with_transport)
+    provider = build_provider(
+        Settings(
+            llm_provider="gemini",
+            llm_api_key="test-key",
+            llm_base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+            llm_model="gemini-3.5-flash-lite",
+        )
+    )
+
+    result = asyncio.run(provider.complete([{"role": "user", "content": "Привет"}], []))
+
+    assert result.text == "Готово"
+    assert str(requests[0].url) == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    assert requests[0].headers["Authorization"] == "Bearer test-key"
+    assert json.loads(requests[0].content)["model"] == "gemini-3.5-flash-lite"
 
 
 def test_tool_result_is_returned_to_llm_before_final_answer():

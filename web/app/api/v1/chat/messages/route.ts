@@ -1,7 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { mockChatResponse } from "@/lib/server/mock-ai";
 import { saveProposal } from "@/lib/server/proposals";
 import { internalHeaders, requestId } from "@/lib/server/request";
 import type { ChatRequest, ChatResponse } from "@/lib/types";
@@ -24,7 +23,7 @@ function isChatRequest(value: unknown): value is ChatRequest {
 
 async function callAiService(payload: ChatRequest, id: string): Promise<ChatResponse> {
   const baseUrl = process.env.AI_SERVICE_URL;
-  if (!baseUrl) return mockChatResponse(payload);
+  if (!baseUrl) throw new Error("AI_SERVICE_URL is required");
 
   const response = await fetch(`${baseUrl}/internal/v1/chat/messages`, {
     method: "POST",

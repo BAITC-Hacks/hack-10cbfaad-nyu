@@ -1,5 +1,11 @@
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 
 @dataclass(frozen=True)
@@ -7,7 +13,7 @@ class Settings:
     product_service_url: str = os.getenv("PRODUCT_SERVICE_URL", "http://product-service:8001")
     internal_service_token: str = os.getenv("INTERNAL_SERVICE_TOKEN", "change-me")
     redis_url: str = os.getenv("REDIS_URL", "")
-    llm_provider: str = os.getenv("LLM_PROVIDER", "mock").lower()
+    llm_provider: str = os.getenv("LLM_PROVIDER", "gemini").lower()
     llm_api_key: str = os.getenv("LLM_API_KEY", "")
     llm_base_url: str = os.getenv("LLM_BASE_URL", "")
     llm_model: str = os.getenv("LLM_MODEL", "")

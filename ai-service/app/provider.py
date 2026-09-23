@@ -66,8 +66,10 @@ class MockLlmProvider:
 
 
 def build_provider(settings: Settings) -> LlmProvider:
-    if settings.llm_provider in {"openai", "deepseek"}:
+    if settings.llm_provider in {"openai", "deepseek", "gemini"}:
+        if not all((settings.llm_api_key, settings.llm_base_url, settings.llm_model)):
+            raise ValueError("LLM_API_KEY, LLM_BASE_URL, and LLM_MODEL are required for the selected provider")
         return HttpLlmProvider(settings)
     if settings.llm_provider == "mock":
         return MockLlmProvider()
-    raise ValueError("LLM_PROVIDER must be openai, deepseek, or mock")
+    raise ValueError("LLM_PROVIDER must be openai, deepseek, gemini, or mock")

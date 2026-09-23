@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -7,3 +8,7 @@ from pathlib import Path
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
+
+# Contract tests must not call a configured external model or Redis instance.
+os.environ["LLM_PROVIDER"] = "mock"
+os.environ["REDIS_URL"] = ""
