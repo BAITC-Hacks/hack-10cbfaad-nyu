@@ -15,4 +15,4 @@ Planned work based on ARCHITECTURE.md:
   The cart adapter and cart mutations belong to Module 3 in the architecture.
 
 Scope excludes UI, AI/LLM logic, chat history and document processing.
-Current status: scope note only. Implementation has not started.
+Current status: implemented in the Product Service directory.
