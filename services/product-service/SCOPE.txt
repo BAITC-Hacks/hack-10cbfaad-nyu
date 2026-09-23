@@ -1,0 +1,18 @@
+Product Service + ekt.kz integration (Module 1)
+
+Planned work based on ARCHITECTURE.md:
+- Build the Python 3.12 / FastAPI service with PostgreSQL, SQLAlchemy,
+  Pydantic and httpx.
+- Connect to the ekt.kz Product API using server-only Basic Auth.
+- Synchronize the paginated catalog and normalize product characteristics,
+  preserving raw values and explicitly flagging conflicting data.
+- Provide product search, live product details, prices and warehouse stock.
+- Find and rank analog candidates with compatibility checks and differences;
+  do not claim compatibility when critical characteristics are uncertain.
+- Expose the architecture's internal v1 search, detail, availability and
+  analog endpoints, with consistent errors and upstream timeout handling.
+- Later support cart integration through live availability checks.
+  The cart adapter and cart mutations belong to Module 3 in the architecture.
+
+Scope excludes UI, AI/LLM logic, chat history and document processing.
+Current status: scope note only. Implementation has not started.
