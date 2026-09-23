@@ -1,5 +1,6 @@
 import asyncio
 import io
+import json
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -8,7 +9,7 @@ from app.main import app
 from app.history import ConversationStore
 from app.service import AiService
 from app.models import ChatRequest
-from app.provider import LlmResult
+from app.provider import LlmResult, MockLlmProvider
 
 
 def test_chat_requires_message_or_attachment():
@@ -25,6 +26,30 @@ def test_chat_mock_provider_returns_fixed_shape():
     assert isinstance(payload["products"], list)
     assert isinstance(payload["actions"], list)
     assert isinstance(payload["errors"], list)
+
+
+def test_mock_provider_searches_for_plain_product_name():
+    result = asyncio.run(
+        MockLlmProvider().complete(
+            [{"role": "user", "content": "лампочка"}], []
+        )
+    )
+
+    assert len(result.tool_calls) == 1
+    function = result.tool_calls[0]["function"]
+    assert function["name"] == "search_products"
+    assert json.loads(function["arguments"])["query"] == "лампочка"
+
+
+def test_mock_provider_removes_search_command_from_query():
+    result = asyncio.run(
+        MockLlmProvider().complete(
+            [{"role": "user", "content": "Найди Legrand DRX250"}], []
+        )
+    )
+
+    arguments = json.loads(result.tool_calls[0]["function"]["arguments"])
+    assert arguments["query"] == "Legrand DRX250"
 
 
 def test_tool_result_is_returned_to_llm_before_final_answer():

@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -37,11 +38,31 @@ class HttpLlmProvider:
 class MockLlmProvider:
     async def complete(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> LlmResult:
         if any(message.get("role") == "tool" for message in messages):
-            return LlmResult(text="Готово, я обработал результат поиска Product Service.")
+            return LlmResult()
         user_text = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
-        if any(word in user_text.lower() for word in ("найди", "товар", "автомат", "артикул", "product", "search")):
-            return LlmResult(tool_calls=[{"function": {"name": "search_products", "arguments": json.dumps({"query": user_text, "limit": 5})}}])
-        return LlmResult(text=f"Получил запрос: {user_text}")
+        normalized = " ".join(user_text.casefold().split())
+        if normalized in {"привет", "здравствуйте", "добрый день", "hello", "hi"}:
+            return LlmResult(text="Здравствуйте! Напишите название, артикул или характеристики товара.")
+
+        query = re.sub(
+            r"^(?:пожалуйста[,.]?\s*)?(?:найди(?:те)?|покажи(?:те)?|ищу|нуж(?:ен|на|ны|но)|хочу купить)\s+",
+            "",
+            user_text.strip(),
+            flags=re.IGNORECASE,
+        ).strip(" .,!?:;")
+        query = query or user_text.strip()
+        return LlmResult(
+            tool_calls=[
+                {
+                    "function": {
+                        "name": "search_products",
+                        "arguments": json.dumps(
+                            {"query": query, "limit": 5}, ensure_ascii=False
+                        ),
+                    }
+                }
+            ]
+        )
 
 
 def build_provider(settings: Settings) -> LlmProvider:
