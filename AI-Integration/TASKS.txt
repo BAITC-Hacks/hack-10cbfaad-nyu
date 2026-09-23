@@ -1,9 +1,0 @@
-AI Integration — краткий план работ
-
-1. Реализовать единый LlmProvider с адаптерами OpenAI и DeepSeek.
-2. Добавить system prompt и безопасную историю сообщений в Redis.
-3. Настроить tool calling для поиска товаров и вызова Product Service.
-4. Преобразовать результаты LLM и Product Service в фиксированный ChatResponse.
-5. Добавить извлечение данных из XLSX, DOCX, PDF и JPEG с защитой от prompt injection.
-6. Покрыть основные сценарии тестами: успешный ответ, ошибки провайдера,
-   недоступный Product Service и пустой результат поиска.
