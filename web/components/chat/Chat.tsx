@@ -86,8 +86,8 @@ export function Chat() {
   }
 
   return (
-    <main className="min-h-screen px-3 py-4 sm:px-6 sm:py-8">
-      <section className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-6xl flex-col overflow-hidden rounded-[28px] border border-white/70 bg-white/75 shadow-soft backdrop-blur sm:min-h-[calc(100vh-4rem)]">
+    <main className="min-h-screen overflow-x-hidden px-3 py-4 sm:px-6 sm:py-8">
+      <section className="mx-auto flex min-h-[calc(100vh-2rem)] min-w-0 max-w-6xl flex-col overflow-hidden rounded-[28px] border border-white/70 bg-white/75 shadow-soft backdrop-blur sm:min-h-[calc(100vh-4rem)]">
         <header className="flex items-center justify-between border-b border-slate-200/80 px-4 py-4 sm:px-7 sm:py-5">
           <div className="flex items-center gap-3">
             <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-ink text-lg font-bold text-white shadow-lg shadow-slate-300">
@@ -103,7 +103,7 @@ export function Chat() {
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex-1 space-y-5 overflow-y-auto px-3 py-5 sm:px-7 sm:py-7">
+          <div className="flex min-w-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto px-3 py-5 sm:px-7 sm:py-7">
             {messages.length === 0 ? (
               <div className="flex min-h-[46vh] items-center justify-center">
                 <div className="max-w-md text-center">
