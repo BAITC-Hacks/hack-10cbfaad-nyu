@@ -14,20 +14,20 @@ export function ChatMessage({ role, text, response, onRetry }: ChatMessageProps)
   const retryable = response?.errors.some((error) => error.retryable);
 
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div className={`max-w-[94%] sm:max-w-[82%] ${isUser ? "items-end" : "items-start"}`}>
+    <div className={`flex min-w-0 max-w-full ${isUser ? "justify-end" : "justify-start"}`}>
+      <div className={`min-w-0 max-w-[94%] sm:max-w-[82%] ${isUser ? "items-end" : "items-start"}`}>
         <div
           className={`rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${
             isUser ? "rounded-br-md bg-ink text-white" : "rounded-bl-md border border-slate-200 bg-white text-slate-700"
           }`}
         >
-          <p className="whitespace-pre-wrap">{text}</p>
+          <p className="break-words whitespace-pre-wrap">{text}</p>
         </div>
 
         {!isUser && response && (
-          <div className="mt-3 space-y-3">
+          <div className="mt-3 min-w-0 max-w-full space-y-3">
             {response.products.length > 0 && (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid min-w-0 gap-3 sm:grid-cols-2">
                 {response.products.map((product) => <ProductCard key={product.id} product={product} />)}
               </div>
             )}
