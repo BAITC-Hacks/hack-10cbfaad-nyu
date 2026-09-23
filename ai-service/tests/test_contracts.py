@@ -1,3 +1,5 @@
+import asyncio
+import io
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -42,6 +44,49 @@ def test_tool_result_is_returned_to_llm_before_final_answer():
             return {"items": []}
 
     provider = FakeProvider()
-    result = __import__("asyncio").run(AiService(provider, FakeProducts(), ConversationStore(), "knowledge").chat(ChatRequest(message="Найди DRX250")))
+    result = asyncio.run(AiService(provider, FakeProducts(), ConversationStore(), "knowledge").chat(ChatRequest(message="Найди DRX250")))
     assert result.text == "Поиск завершён"
     assert provider.calls == 2
+
+
+def test_upload_rejects_unsupported_file_type():
+    response = TestClient(app).post(
+        "/internal/v1/attachments",
+        files={"file": ("notes.txt", b"not supported", "text/plain")},
+    )
+    assert response.status_code == 415
+
+
+def test_upload_accepts_xlsx_and_returns_attachment_id():
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    workbook.active.append(["article", "quantity"])
+    workbook.active.append(["DRX250", 4])
+    data = io.BytesIO()
+    workbook.save(data)
+    response = TestClient(app).post(
+        "/internal/v1/attachments",
+        files={"file": ("specification.xlsx", data.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    UUID(payload["attachment_id"])
+    assert payload["status"] == "ready"
+
+
+def test_propose_cart_add_creates_action_without_cart_call():
+    class ProposalProvider:
+        def __init__(self):
+            self.calls = 0
+
+        async def complete(self, messages, tools):
+            self.calls += 1
+            if self.calls == 1:
+                return LlmResult(tool_calls=[{"function": {"name": "propose_cart_add", "arguments": '{"product_id":515291,"quantity":2}'}}])
+            return LlmResult(text="Готов добавить товар после подтверждения")
+
+    result = asyncio.run(AiService(ProposalProvider(), object(), ConversationStore(), "knowledge").chat(ChatRequest(message="Добавь 2 штуки")))
+    assert len(result.actions) == 1
+    assert result.actions[0].product_id == 515291
+    assert result.actions[0].quantity == 2
