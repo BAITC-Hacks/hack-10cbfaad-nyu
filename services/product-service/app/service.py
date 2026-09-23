@@ -1,4 +1,5 @@
 from datetime import datetime
+import re
 from typing import Any
 from uuid import uuid4
 
@@ -16,6 +17,43 @@ from .errors import ServiceError, product_not_found
 from .models import Product
 from .normalizer import iso_z, normalize_product, utc_now
 from .schemas import AnalogRequest, SearchRequest, SyncRequest
+
+
+SEARCH_STOP_WORDS = {
+    "find",
+    "please",
+    "product",
+    "search",
+    "дайте",
+    "ищу",
+    "купить",
+    "мне",
+    "найди",
+    "найдите",
+    "нужен",
+    "нужна",
+    "нужно",
+    "нужны",
+    "пожалуйста",
+    "покажи",
+    "покажите",
+    "товар",
+    "хочу",
+}
+SEARCH_ALIASES = {
+    "bulb": {"lamp", "лампа"},
+    "лампочка": {"лампа"},
+    "лампочки": {"лампа"},
+    "лампочку": {"лампа"},
+}
+SEARCH_TOKEN_PATTERN = re.compile(r"[\w]+(?:[./-][\w]+)*", re.UNICODE)
+
+
+def _query_groups(query: str) -> list[set[str]]:
+    tokens = [token.casefold() for token in SEARCH_TOKEN_PATTERN.findall(query)]
+    significant = [token for token in tokens if token not in SEARCH_STOP_WORDS]
+    selected = significant or tokens
+    return [{token, *SEARCH_ALIASES.get(token, set())} for token in selected]
 
 
 def map_ekt_error(error: Exception, product_id: int | None = None) -> ServiceError:
@@ -197,30 +235,34 @@ def _apply_filters(statement: Select[Any], request: SearchRequest) -> Select[Any
 
 def _score_product(product: Product, request: SearchRequest) -> tuple[float, list[str]]:
     query = request.query.casefold()
-    query_tokens = set(query.split())
+    query_groups = _query_groups(query)
+    query_terms = set().union(*query_groups) if query_groups else set()
     reasons: list[str] = []
 
-    if product.article and product.article.casefold() == query:
+    if product.article and product.article.casefold() in query_terms | {query}:
         return 1.0, ["exact article matched"]
-    if product.supplier_article and product.supplier_article.casefold() == query:
+    if product.supplier_article and product.supplier_article.casefold() in query_terms | {query}:
         return 0.99, ["exact supplier article matched"]
-    if product.barcode and product.barcode.casefold() == query:
+    if product.barcode and product.barcode.casefold() in query_terms | {query}:
         return 0.98, ["exact barcode matched"]
 
     score = 0.0
     name = product.name.casefold()
-    search_tokens = set((product.search_text or "").casefold().split())
+    search_text = (product.search_text or "").casefold()
     if name == query:
         score = 0.92
         reasons.append("exact product name matched")
     elif query in name:
         score = 0.85
         reasons.append("query found in product name")
-    elif query_tokens:
-        ratio = len(query_tokens & search_tokens) / len(query_tokens)
+    elif query_groups:
+        matched_groups = [
+            group for group in query_groups if any(term in search_text for term in group)
+        ]
+        ratio = len(matched_groups) / len(query_groups)
         if ratio:
             score = 0.45 + 0.35 * ratio
-            reasons.append(f"{len(query_tokens & search_tokens)} query terms matched")
+            reasons.append(f"{len(matched_groups)} query terms matched")
 
     for label, value in (
         ("article", product.article),
@@ -254,6 +296,18 @@ def search_products(session: Session, request: SearchRequest) -> dict[str, Any]:
         func.lower(Product.name).like(like),
         func.lower(Product.search_text).like(like),
     ]
+    for group in _query_groups(query):
+        for term in group:
+            term_like = f"%{term}%"
+            candidate_conditions.extend(
+                [
+                    func.lower(Product.article) == term,
+                    func.lower(Product.supplier_article) == term,
+                    func.lower(Product.barcode) == term,
+                    func.lower(Product.name).like(term_like),
+                    func.lower(Product.search_text).like(term_like),
+                ]
+            )
     if session.bind is not None and session.bind.dialect.name == "postgresql":
         candidate_conditions.append(
             text(

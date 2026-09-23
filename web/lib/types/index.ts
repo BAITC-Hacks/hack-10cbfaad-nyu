@@ -11,12 +11,12 @@ export interface Availability {
 
 export interface ChatProduct {
   id: number;
-  article: string;
+  article: string | null;
   name: string;
-  price: Price;
-  availability: Availability;
+  price: Price | null;
+  availability: Availability | null;
   image_url: string | null;
-  product_url: string;
+  product_url: string | null;
 }
 
 export interface ChatAction {

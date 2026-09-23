@@ -91,6 +91,44 @@ def test_search_priority_filters_and_empty_result(
     }
 
 
+def test_search_accepts_natural_language_around_article(
+    client, db, fixture_product, auth_headers
+):
+    seed(db, fixture_product)
+
+    response = client.post(
+        "/internal/v1/products/search",
+        headers=auth_headers,
+        json={"query": "Найди товар 027228"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["product"]["id"] == 515291
+    assert response.json()["items"][0]["match_score"] == 0.99
+
+
+def test_search_understands_lamp_bulb_alias(client, db, fixture_product, auth_headers):
+    lamp = deepcopy(fixture_product)
+    lamp.update(
+        {
+            "id": 515293,
+            "article": "LAMP-10W",
+            "name": "Лампа светодиодная 10 Вт E27",
+            "description": "Светодиодная лампа для внутреннего освещения",
+        }
+    )
+    seed(db, lamp)
+
+    response = client.post(
+        "/internal/v1/products/search",
+        headers=auth_headers,
+        json={"query": "лампочка"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["product"]["id"] == 515293
+
+
 def test_live_detail_and_availability(client, ekt, fixture_product, auth_headers):
     ekt.details[515291] = fixture_product
 
