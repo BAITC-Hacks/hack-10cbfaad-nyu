@@ -36,6 +36,8 @@ class HttpLlmProvider:
 
 class MockLlmProvider:
     async def complete(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> LlmResult:
+        if any(message.get("role") == "tool" for message in messages):
+            return LlmResult(text="Готово, я обработал результат поиска Product Service.")
         user_text = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
         if any(word in user_text.lower() for word in ("найди", "товар", "автомат", "артикул", "product", "search")):
             return LlmResult(tool_calls=[{"function": {"name": "search_products", "arguments": json.dumps({"query": user_text, "limit": 5})}}])

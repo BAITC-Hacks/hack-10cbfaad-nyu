@@ -36,13 +36,22 @@ class AiService:
         try:
             llm_result = await self.provider.complete(messages, TOOL_DEFINITIONS)
             tool_results = []
-            for call in llm_result.tool_calls:
-                name = call.get("function", {}).get("name", "")
-                raw_args = call.get("function", {}).get("arguments", "{}")
-                tool_results.append(await execute_tool(name, json.loads(raw_args), self.products, self.knowledge_dir))
+            text = llm_result.text
+            for _ in range(2):
+                if not llm_result.tool_calls:
+                    break
+                messages.append({"role": "assistant", "content": llm_result.text or None, "tool_calls": llm_result.tool_calls})
+                for index, call in enumerate(llm_result.tool_calls):
+                    name = call.get("function", {}).get("name", "")
+                    raw_args = call.get("function", {}).get("arguments", "{}")
+                    result = await execute_tool(name, json.loads(raw_args), self.products, self.knowledge_dir)
+                    tool_results.append(result)
+                    messages.append({"role": "tool", "tool_call_id": call.get("id", f"tool-{index}"), "name": name, "content": json.dumps(result, ensure_ascii=False)})
+                llm_result = await self.provider.complete(messages, TOOL_DEFINITIONS)
+                text = llm_result.text
             products = self._products_from_results(tool_results)
             actions = self._actions_from_results(tool_results)
-            text = llm_result.text or self._fallback_text(products)
+            text = text or self._fallback_text(products)
         except ProductServiceError:
             text = "Сейчас не удалось проверить актуальную цену и наличие. Попробуйте повторить запрос позже."
             errors.append(ChatError(code="UPSTREAM_CATALOG_UNAVAILABLE", message="Live catalog data is unavailable", retryable=True, source="product-service"))
