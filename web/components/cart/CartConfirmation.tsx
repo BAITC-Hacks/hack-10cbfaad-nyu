@@ -33,7 +33,7 @@ export function CartConfirmation({ action, conversationId }: CartConfirmationPro
 
   if (state === "success" && result) {
     return (
-      <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+      <div className="mt-3 max-w-full rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
         <p className="font-semibold text-emerald-800">Товар добавлен в корзину</p>
         <a className="mt-2 inline-flex text-sm font-semibold text-emerald-700 underline" href={result.cart_url}>
           Перейти в корзину →
@@ -43,10 +43,10 @@ export function CartConfirmation({ action, conversationId }: CartConfirmationPro
   }
 
   return (
-    <div className="mt-3 rounded-2xl border border-cyan-200 bg-cyan-50/70 p-4">
+    <div className="mt-3 max-w-full min-w-0 rounded-2xl border border-cyan-200 bg-cyan-50/70 p-4">
       <div className="flex items-start gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700">＋</div>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 break-words">
           <p className="font-semibold text-slate-800">Добавить товар в корзину?</p>
           <p className="mt-1 text-sm text-slate-600">Количество: {action.quantity}</p>
           {state === "error" && <p className="mt-2 text-sm text-rose-700">{error}</p>}
