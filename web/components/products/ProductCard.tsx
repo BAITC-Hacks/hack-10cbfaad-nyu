@@ -6,7 +6,7 @@ interface ProductCardProps {
 
 export function ProductCard({ product }: ProductCardProps) {
   return (
-    <article className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+    <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
       <div className="relative flex h-36 items-center justify-center overflow-hidden bg-slate-100 sm:h-40">
         {product.image_url ? (
           <img className="h-full w-full object-cover" src={product.image_url} alt={product.name} />
@@ -25,9 +25,9 @@ export function ProductCard({ product }: ProductCardProps) {
           <p className="line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-ink">{product.name}</p>
           <p className="mt-1 text-xs text-slate-500">Артикул: {product.article}</p>
         </div>
-        <div className="flex min-w-0 flex-wrap items-end justify-between gap-3">
+        <div className="flex items-end justify-between gap-3">
           <div>
-            <p className="break-words text-lg font-bold text-ink">
+            <p className="text-lg font-bold text-ink">
               {new Intl.NumberFormat("ru-RU").format(product.price.amount)} {product.price.currency}
             </p>
             <p className="text-xs text-emerald-600">Остаток: {product.availability.quantity_total} шт.</p>

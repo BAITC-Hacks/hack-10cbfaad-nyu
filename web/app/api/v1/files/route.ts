@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { internalHeaders, requestId } from "@/lib/server/request";
+import { aiServiceUrl, isRealAiMode } from "@/lib/server/ai-service";
 import type { AttachmentResponse } from "@/lib/types";
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
@@ -40,10 +41,14 @@ export async function POST(request: Request) {
   }
 
   try {
-    const serviceUrl = process.env.AI_SERVICE_URL;
+    const realAiMode = isRealAiMode();
+    const serviceUrl = realAiMode ? aiServiceUrl() : null;
     let attachment: AttachmentResponse;
 
-    if (serviceUrl) {
+    if (realAiMode) {
+      if (!serviceUrl) {
+        return errorResponse("FILE_PARSE_FAILED", "AI Service не настроен для обработки файлов", 422, id);
+      }
       const upstreamForm = new FormData();
       upstreamForm.append("file", file, file.name);
       const upstreamResponse = await fetch(`${serviceUrl}/internal/v1/attachments`, {

@@ -20,9 +20,9 @@ npm run build
 
 ## Mock AI
 
-Если `AI_SERVICE_URL` не задан, browser API использует локальный mock. Обычный запрос показывает товар `515291`; сообщение `добавь 2` создаёт action `PROPOSE_CART_ADD`, не изменяя корзину напрямую.
+При `AI_SERVICE_MODE=mock` browser API использует локальный mock (это режим по умолчанию). Обычный запрос показывает товар `515291`; сообщение `добавь 2` создаёт action `PROPOSE_CART_ADD`, не изменяя корзину напрямую.
 
-При заданном `AI_SERVICE_URL` Module 3 проксирует запрос во внутренний `POST /internal/v1/chat/messages` с `Authorization` и `X-Request-ID`.
+При `AI_SERVICE_MODE=real` и заданном `AI_SERVICE_URL` Module 3 проксирует запрос во внутренний `POST /internal/v1/chat/messages` с `Authorization` и `X-Request-ID`. Browser по-прежнему вызывает только `/api/v1/chat/messages`.
 
 ## Mock Cart
 
@@ -34,7 +34,8 @@ npm run build
 
 Скопируйте `.env.example` в `.env.local` при необходимости. Реальные credentials и secrets в репозиторий не добавляются.
 
-- `AI_SERVICE_URL` — внутренний AI Service; если пустой, используется mock.
+- `AI_SERVICE_MODE` — `mock` по умолчанию или `real` для внутреннего AI Service.
+- `AI_SERVICE_URL` — внутренний AI Service; используется только в режиме `real`.
 - `PRODUCT_SERVICE_URL` — внутренний Product Service для будущего live availability.
 - `INTERNAL_SERVICE_TOKEN` — внутренний bearer token.
 - `CART_PROPOSAL_TTL_SECONDS` — TTL proposal, по умолчанию 900.
